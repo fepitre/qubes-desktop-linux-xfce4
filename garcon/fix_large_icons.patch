@@ -1,0 +1,136 @@
+From 0491a36c504301f286bf50937598a8965608e31a Mon Sep 17 00:00:00 2001
+From: Mukundan Ragavan <nonamedotc@gmail.com>
+Date: Sep 07 2018 23:15:04 +0000
+Subject: Add patch to fix large icons (fixes bug#1624292)
+
+
+---
+
+diff --git a/fix_large_icons.patch b/fix_large_icons.patch
+new file mode 100644
+index 0000000..0768b2a
+--- /dev/null
++++ b/fix_large_icons.patch
+@@ -0,0 +1,78 @@
++From 4387496fe332a50945e7db76bc2196b419656fe3 Mon Sep 17 00:00:00 2001
++From: Stefan Berzl <stefanberzl@gmail.com>
++Date: Mon, 21 Aug 2017 18:39:07 +0300
++Subject: fix: some menu icons are too big (Bug #13785)
++
++Some packages only provide icons in sizes much bigger than the standard
++GTK menu size of 16px.
++
++The clipboard manager qlipper for example provides the following icon:
++/usr/share/icons/hicolor/128x128/apps/qlipper.png
++
++In GTK 3.22.18 the function gtk_image_new_from_icon_name when given
++GTK_ICON_SIZE_MENU as second argument still returns an image with 128x128.
++
++The patch I have supplied uses existing code to scale such an image.
++
++Signed-off-by: Eric Koegel <eric.koegel@gmail.com>
++---
++ garcon-gtk/garcon-gtk-menu.c | 33 +++++++++++++++++++--------------
++ 1 file changed, 19 insertions(+), 14 deletions(-)
++
++diff --git a/garcon-gtk/garcon-gtk-menu.c b/garcon-gtk/garcon-gtk-menu.c
++index 41990f2..f31a1ed 100644
++--- a/garcon-gtk/garcon-gtk-menu.c
+++++ b/garcon-gtk/garcon-gtk-menu.c
++@@ -650,7 +650,11 @@ garcon_gtk_menu_load_icon (const gchar *icon_name)
++   gtk_icon_size_lookup (GTK_ICON_SIZE_MENU, &w, &h);
++   size = MIN (w, h);
++ 
++-  if (! gtk_icon_theme_has_icon (icon_theme, icon_name))
+++  if (gtk_icon_theme_has_icon (icon_theme, icon_name))
+++    {
+++	  pixbuf = gtk_icon_theme_load_icon (icon_theme, icon_name, size, 0, NULL);;
+++    }
+++  else
++     {
++       if (g_path_is_absolute (icon_name))
++         {
++@@ -684,22 +688,23 @@ garcon_gtk_menu_load_icon (const gchar *icon_name)
++               g_free (name);
++             }
++         }
+++    }
++ 
++-      /* Turn the pixbuf into a gtk_image */
++-      if (G_LIKELY (pixbuf))
++-        {
++-          /* scale the pixbuf down if it needs it */
++-          GdkPixbuf *tmp = gdk_pixbuf_scale_simple (pixbuf, w, h, GDK_INTERP_BILINEAR);
++-          g_object_unref (pixbuf);
++-          pixbuf = tmp;
+++  /* Turn the pixbuf into a gtk_image */
+++  if (G_LIKELY (pixbuf))
+++    {
+++      /* scale the pixbuf down if it needs it */
+++      GdkPixbuf *pixbuf_scaled = gdk_pixbuf_scale_simple (pixbuf, w, h, GDK_INTERP_BILINEAR);
+++      g_object_unref (G_OBJECT (pixbuf));
++ 
++-          image = gtk_image_new_from_pixbuf (pixbuf);
++-          g_object_unref (G_OBJECT (pixbuf));
++-        }
+++      image = gtk_image_new_from_pixbuf (pixbuf_scaled);
+++      g_object_unref (G_OBJECT (pixbuf_scaled));
+++    }
+++  else
+++    {
+++	  /* display the placeholder at least */
+++	  image = gtk_image_new_from_icon_name (icon_name, GTK_ICON_SIZE_MENU);
++     }
++-
++-  if (image == NULL)
++-    image = gtk_image_new_from_icon_name (icon_name, GTK_ICON_SIZE_MENU);
++ 
++   return image;
++ }
++-- 
++cgit v1.2.1
++
+diff --git a/garcon.spec b/garcon.spec
+index 313b000..8c91648 100644
+--- a/garcon.spec
++++ b/garcon.spec
+@@ -5,7 +5,7 @@
+ 
+ Name:           garcon
+ Version:        0.6.1
+-Release:        20%{?dist}
++Release:        21%{?dist}
+ Summary:        Implementation of the freedesktop.org menu specification
+ 
+ Group:          System Environment/Libraries
+@@ -18,6 +18,11 @@ Source0:        http://archive.xfce.org/src/libs/%{name}/%{minorversion}/%{name}
+ Source1:        xfce-documentation.directory
+ Patch0:         garcon-0.2.0-redhat-menus.patch
+ 
++# https://bugzilla.redhat.com/show_bug.cgi?id=1624292
++# patch from upstream git
++Patch1:         fix_large_icons.patch
++
++
+ BuildRequires:  pkgconfig(glib-2.0) >= 2.30.0
+ BuildRequires:  pkgconfig(libxfce4util-1.0) >= %{xfceversion}
+ BuildRequires:  pkgconfig(libxfce4ui-1) >= %{xfceversion}
+@@ -57,6 +62,7 @@ developing applications that use %{name}.
+ %prep
+ %setup -q
+ %patch0 -p1 -b.redhat-menus
++%patch1 -p1
+ 
+ 
+ %build
+@@ -94,6 +100,9 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
+ %doc %{_datadir}/gtk-doc/
+ 
+ %changelog
++* Fri Sep 07 2018 Mukundan Ragavan <nonamedotc@fedoraproject.org> - 0.6.1-21
++- Add patch to fix large icons (fixes bug#1624292)
++
+ * Sat Aug 11 2018 Mukundan Ragavan <nonamedotc@fedoraproject.org> - 0.6.1-20
+ - Rebuild for xfce version 4.13
+ 
+
